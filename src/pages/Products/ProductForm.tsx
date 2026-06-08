@@ -1,8 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Upload, X } from 'lucide-react'
 import { api } from '../../api'
 import { Category } from '../../types'
 import { useToast } from '../../components/Toast'
@@ -16,7 +16,6 @@ interface FormData {
   sku: string
   colors: string
   tags: string
-  images: string
   width: number | ''
   length: number | ''
   height: number | ''
@@ -28,6 +27,9 @@ export default function ProductForm() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useToast()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [previewUrls, setPreviewUrls] = useState<string[]>([])
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>()
 
@@ -59,33 +61,51 @@ export default function ProductForm() {
         sku: product.sku ?? '',
         colors: (product.colors ?? []).join(', '),
         tags: (product.tags ?? []).join(', '),
-        images: (product.images ?? []).join('\n'),
         width: product.width ?? '',
         length: product.length ?? '',
         height: product.height ?? '',
       })
+      if (product.images?.length) setPreviewUrls(product.images)
     }
   }, [product, reset])
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    setSelectedFiles(files)
+    setPreviewUrls(files.map((f) => URL.createObjectURL(f)))
+  }
+
+  function removeFile(index: number) {
+    const updated = selectedFiles.filter((_, i) => i !== index)
+    setSelectedFiles(updated)
+    setPreviewUrls(updated.map((f) => URL.createObjectURL(f)))
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const payload = {
-        name: data.name,
-        description: data.description,
-        price: Number(data.price),
-        stock: Number(data.stock),
-        categoryId: Number(data.categoryId),
-        sku: data.sku,
-        colors: data.colors ? data.colors.split(',').map((s) => s.trim()).filter(Boolean) : [],
-        tags: data.tags ? data.tags.split(',').map((s) => s.trim()).filter(Boolean) : [],
-        images: data.images ? data.images.split('\n').map((s) => s.trim()).filter(Boolean) : [],
-        ...(data.width !== '' && { width: Number(data.width) }),
-        ...(data.length !== '' && { length: Number(data.length) }),
-        ...(data.height !== '' && { height: Number(data.height) }),
-      }
-      console.log('[product payload]', payload)
-      if (isEdit) return api.patch(`/api/products/${id}`, payload)
-      return api.post('/api/products', payload)
+      const formData = new window.FormData()
+      formData.append('name', data.name)
+      formData.append('description', data.description)
+      formData.append('price', String(data.price))
+      formData.append('stock', String(data.stock))
+      formData.append('categoryId', String(data.categoryId))
+      formData.append('sku', data.sku)
+
+      // comma-separated strings — backend splits them
+      if (data.colors) formData.append('colors', data.colors.replace(/\s*,\s*/g, ','))
+      if (data.tags) formData.append('tags', data.tags.replace(/\s*,\s*/g, ','))
+
+      if (data.width !== '') formData.append('width', String(data.width))
+      if (data.length !== '') formData.append('length', String(data.length))
+      if (data.height !== '') formData.append('height', String(data.height))
+
+      // file uploads
+      selectedFiles.forEach((file) => formData.append('images', file))
+
+      const config = { headers: { 'Content-Type': 'multipart/form-data' } }
+      if (isEdit) return api.patch(`/api/products/${id}`, formData, config)
+      return api.post('/api/products', formData, config)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
@@ -94,7 +114,7 @@ export default function ProductForm() {
     },
     onError: (err: unknown) => {
       const e = err as { response?: { data?: unknown } }
-      console.error('[product save error]', e?.response?.data)
+      console.error('[product error]', e?.response?.data)
       toast.error('Failed to save product')
     },
   })
@@ -108,25 +128,29 @@ export default function ProductForm() {
         <h2 className="text-2xl font-bold text-gray-900">{isEdit ? 'Edit Product' : 'New Product'}</h2>
       </div>
 
-      <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5">
-        <Field label="Name" error={errors.name?.message}>
+      <form
+        onSubmit={handleSubmit((d) => mutation.mutate(d))}
+        className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5"
+        encType="multipart/form-data"
+      >
+        <Field label="Name *" error={errors.name?.message}>
           <input {...register('name', { required: 'Required' })} className={inp} />
         </Field>
 
-        <Field label="Description" error={errors.description?.message}>
+        <Field label="Description *" error={errors.description?.message}>
           <textarea rows={3} {...register('description', { required: 'Required' })} className={inp} />
         </Field>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Price ($)" error={errors.price?.message}>
-            <input type="number" step="0.01" {...register('price', { required: 'Required' })} className={inp} />
+          <Field label="Price ($) *" error={errors.price?.message}>
+            <input type="number" step="0.01" min="0" {...register('price', { required: 'Required' })} className={inp} />
           </Field>
-          <Field label="Stock" error={errors.stock?.message}>
-            <input type="number" {...register('stock', { required: 'Required' })} className={inp} />
+          <Field label="Stock *" error={errors.stock?.message}>
+            <input type="number" min="0" {...register('stock', { required: 'Required' })} className={inp} />
           </Field>
         </div>
 
-        <Field label="Category" error={errors.categoryId?.message}>
+        <Field label="Category *" error={errors.categoryId?.message}>
           <select {...register('categoryId', { required: 'Required' })} className={inp}>
             <option value="">Select category</option>
             {(categories ?? []).map((c) => (
@@ -135,31 +159,73 @@ export default function ProductForm() {
           </select>
         </Field>
 
-        <Field label="SKU">
-          <input {...register('sku')} className={inp} />
+        <Field label="SKU *" error={errors.sku?.message}>
+          <input {...register('sku', { required: 'Required' })} placeholder="e.g. SOF-001" className={inp} />
         </Field>
 
         <Field label="Colors (comma-separated)">
-          <input {...register('colors')} placeholder="White, Brown, Black" className={inp} />
+          <input {...register('colors')} placeholder="red, blue, green" className={inp} />
         </Field>
 
         <Field label="Tags (comma-separated)">
           <input {...register('tags')} placeholder="modern, sofa, living" className={inp} />
         </Field>
 
-        <Field label="Image URLs (one per line)">
-          <textarea rows={3} {...register('images')} placeholder="https://…" className={inp} />
-        </Field>
+        {/* File upload */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Product Images {!isEdit && <span className="text-red-500">*</span>}
+          </label>
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-gray-400 transition-colors"
+          >
+            <Upload size={20} className="mx-auto text-gray-400 mb-2" />
+            <p className="text-sm text-gray-500">Click to select images</p>
+            <p className="text-xs text-gray-400 mt-1">PNG, JPG, WEBP supported</p>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          {previewUrls.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-3">
+              {previewUrls.map((url, i) => (
+                <div key={i} className="relative group">
+                  <img
+                    src={url}
+                    alt={`preview-${i}`}
+                    className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                  />
+                  {selectedFiles.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-3 gap-4">
           <Field label="Width (m)">
-            <input type="number" step="0.01" {...register('width')} className={inp} />
+            <input type="number" step="0.01" min="0" {...register('width')} className={inp} />
           </Field>
           <Field label="Length (m)">
-            <input type="number" step="0.01" {...register('length')} className={inp} />
+            <input type="number" step="0.01" min="0" {...register('length')} className={inp} />
           </Field>
           <Field label="Height (m)">
-            <input type="number" step="0.01" {...register('height')} className={inp} />
+            <input type="number" step="0.01" min="0" {...register('height')} className={inp} />
           </Field>
         </div>
 
