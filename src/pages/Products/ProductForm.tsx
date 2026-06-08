@@ -36,7 +36,10 @@ export default function ProductForm() {
     queryFn: async () => {
       const res = await api.get('/api/category')
       const d = res.data?.data ?? res.data
-      return (Array.isArray(d) ? d : d?.categories ?? d?.items ?? []) as Category[]
+      const list = Array.isArray(d)
+        ? d
+        : d?.categories ?? d?.category ?? d?.items ?? d?.data ?? []
+      return list as Category[]
     },
   })
 
