@@ -20,7 +20,7 @@ const links = [
   { to: '/discounts', label: 'Discounts', icon: Percent },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate()
 
   function signOut() {
@@ -29,7 +29,7 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-64 min-h-screen bg-gray-900 text-white flex flex-col">
+    <aside className="w-64 h-full min-h-screen bg-gray-900 text-white flex flex-col">
       <div className="px-6 py-5 border-b border-gray-700">
         <span className="text-xl font-bold tracking-wide text-gold-400" style={{ color: '#d4a843' }}>
           Furnishing
@@ -43,6 +43,7 @@ export default function Sidebar() {
             key={to}
             to={to}
             end={exact}
+            onClick={onNavigate}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isActive

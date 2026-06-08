@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft } from 'lucide-react'
 import { api } from '../../api'
 import { Category } from '../../types'
+import { useToast } from '../../components/Toast'
 
 interface FormData {
   name: string
@@ -26,6 +27,7 @@ export default function ProductForm() {
   const isEdit = Boolean(id)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const toast = useToast()
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>()
 
@@ -87,8 +89,10 @@ export default function ProductForm() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
+      toast.success(isEdit ? 'Product updated' : 'Product created')
       navigate('/products')
     },
+    onError: () => toast.error('Failed to save product'),
   })
 
   return (
@@ -102,24 +106,24 @@ export default function ProductForm() {
 
       <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5">
         <Field label="Name" error={errors.name?.message}>
-          <input {...register('name', { required: 'Required' })} className={input} />
+          <input {...register('name', { required: 'Required' })} className={inp} />
         </Field>
 
         <Field label="Description" error={errors.description?.message}>
-          <textarea rows={3} {...register('description', { required: 'Required' })} className={input} />
+          <textarea rows={3} {...register('description', { required: 'Required' })} className={inp} />
         </Field>
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Price ($)" error={errors.price?.message}>
-            <input type="number" step="0.01" {...register('price', { required: 'Required' })} className={input} />
+            <input type="number" step="0.01" {...register('price', { required: 'Required' })} className={inp} />
           </Field>
           <Field label="Stock" error={errors.stock?.message}>
-            <input type="number" {...register('stock', { required: 'Required' })} className={input} />
+            <input type="number" {...register('stock', { required: 'Required' })} className={inp} />
           </Field>
         </div>
 
         <Field label="Category" error={errors.categoryId?.message}>
-          <select {...register('categoryId', { required: 'Required' })} className={input}>
+          <select {...register('categoryId', { required: 'Required' })} className={inp}>
             <option value="">Select category</option>
             {(categories ?? []).map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
@@ -128,42 +132,38 @@ export default function ProductForm() {
         </Field>
 
         <Field label="SKU">
-          <input {...register('sku')} className={input} />
+          <input {...register('sku')} className={inp} />
         </Field>
 
         <Field label="Colors (comma-separated)">
-          <input {...register('colors')} placeholder="White, Brown, Black" className={input} />
+          <input {...register('colors')} placeholder="White, Brown, Black" className={inp} />
         </Field>
 
         <Field label="Tags (comma-separated)">
-          <input {...register('tags')} placeholder="modern, sofa, living" className={input} />
+          <input {...register('tags')} placeholder="modern, sofa, living" className={inp} />
         </Field>
 
         <Field label="Image URLs (one per line)">
-          <textarea rows={3} {...register('images')} placeholder="https://…" className={input} />
+          <textarea rows={3} {...register('images')} placeholder="https://…" className={inp} />
         </Field>
 
         <div className="grid grid-cols-3 gap-4">
           <Field label="Width (m)">
-            <input type="number" step="0.01" {...register('width')} className={input} />
+            <input type="number" step="0.01" {...register('width')} className={inp} />
           </Field>
           <Field label="Length (m)">
-            <input type="number" step="0.01" {...register('length')} className={input} />
+            <input type="number" step="0.01" {...register('length')} className={inp} />
           </Field>
           <Field label="Height (m)">
-            <input type="number" step="0.01" {...register('height')} className={input} />
+            <input type="number" step="0.01" {...register('height')} className={inp} />
           </Field>
         </div>
-
-        {mutation.isError && (
-          <p className="text-red-600 text-sm">Failed to save product. Please try again.</p>
-        )}
 
         <div className="flex gap-3 pt-2">
           <button
             type="submit"
             disabled={mutation.isPending}
-            className="px-6 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
+            className="px-6 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
           >
             {mutation.isPending ? 'Saving…' : isEdit ? 'Update Product' : 'Create Product'}
           </button>
@@ -180,7 +180,7 @@ export default function ProductForm() {
   )
 }
 
-const input = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900'
+const inp = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900'
 
 function Field({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
   return (

@@ -8,12 +8,21 @@ import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Pagination from '../../components/Pagination'
+import Skeleton from '../../components/Skeleton'
+import { useToast } from '../../components/Toast'
+
+const STATUS_OPTIONS = ['', 'PENDING', 'PROCESSING', 'COMPLETED', 'CANCELLED']
 
 export default function OrdersList() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const toast = useToast()
   const [page, setPage] = useState(1)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [statusFilter, setStatusFilter] = useState('')
+  const [search, setSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const limit = 20
 
   const { data, isLoading } = useQuery({
@@ -30,7 +39,17 @@ export default function OrdersList() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] })
       setDeleteId(null)
+      toast.success('Order deleted')
     },
+    onError: () => toast.error('Failed to delete order'),
+  })
+
+  const orders = (data?.orders ?? []).filter((o) => {
+    if (statusFilter && o.status !== statusFilter) return false
+    if (search && !String(o.id).includes(search) && !String(o.customerId).includes(search)) return false
+    if (dateFrom && o.order_date < dateFrom) return false
+    if (dateTo && o.order_date > dateTo + 'T23:59:59') return false
+    return true
   })
 
   const columns = [
@@ -38,7 +57,7 @@ export default function OrdersList() {
     { header: 'Customer ID', accessor: 'customerId' as keyof Order },
     {
       header: 'Total',
-      render: (o: Order) => <span>${o.totalPrice?.toLocaleString()}</span>,
+      render: (o: Order) => <span className="font-medium">${o.totalPrice?.toLocaleString()}</span>,
     },
     {
       header: 'Status',
@@ -46,7 +65,7 @@ export default function OrdersList() {
     },
     {
       header: 'Date',
-      render: (o: Order) => <span>{o.order_date?.slice(0, 10)}</span>,
+      render: (o: Order) => <span className="text-gray-500">{o.order_date?.slice(0, 10)}</span>,
     },
     {
       header: 'Actions',
@@ -54,13 +73,15 @@ export default function OrdersList() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => navigate(`/orders/${o.id}`)}
-            className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+            className="p-1.5 rounded hover:bg-blue-50 text-blue-500"
+            title="View"
           >
             <Eye size={15} />
           </button>
           <button
             onClick={() => setDeleteId(o.id)}
             className="p-1.5 rounded hover:bg-red-50 text-red-500"
+            title="Delete"
           >
             <Trash2 size={15} />
           </button>
@@ -72,8 +93,46 @@ export default function OrdersList() {
   return (
     <div className="space-y-5">
       <h2 className="text-2xl font-bold text-gray-900">Orders</h2>
-      <DataTable columns={columns} data={data?.orders ?? []} keyField="id" loading={isLoading} />
-      <Pagination page={page} total={data?.total ?? 0} limit={limit} onChange={setPage} />
+
+      <div className="flex flex-wrap gap-3">
+        <input
+          type="text"
+          placeholder="Search by order or customer ID…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className={inp + ' w-56'}
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
+          className={inp + ' w-44'}
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>{s || 'All Statuses'}</option>
+          ))}
+        </select>
+        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={inp} title="From date" />
+        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={inp} title="To date" />
+        {(statusFilter || dateFrom || dateTo || search) && (
+          <button
+            onClick={() => { setStatusFilter(''); setDateFrom(''); setDateTo(''); setSearch('') }}
+            className="px-3 py-2 text-sm text-gray-500 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <Skeleton rows={8} cols={6} />
+      ) : orders.length === 0 ? (
+        <EmptyState message="No orders match your filters." />
+      ) : (
+        <DataTable columns={columns} data={orders} keyField="id" />
+      )}
+
+      {!isLoading && <Pagination page={page} total={data?.total ?? 0} limit={limit} onChange={setPage} />}
+
       <ConfirmDialog
         open={deleteId !== null}
         message="Delete this order?"
@@ -81,6 +140,16 @@ export default function OrdersList() {
         onCancel={() => setDeleteId(null)}
         loading={deleteMutation.isPending}
       />
+    </div>
+  )
+}
+
+const inp = 'px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900'
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-16 text-center">
+      <p className="text-gray-400 text-sm">{message}</p>
     </div>
   )
 }
