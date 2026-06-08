@@ -35,11 +35,7 @@ export default function ProductForm() {
     queryKey: ['categories'],
     queryFn: async () => {
       const res = await api.get('/api/category')
-      const outer = res.data?.data ?? res.data
-      const list = Array.isArray(outer)
-        ? outer
-        : outer?.data ?? outer?.categories ?? outer?.category ?? outer?.items ?? []
-      return list as Category[]
+      return (res.data?.data?.categorys ?? []) as Category[]
     },
   })
 

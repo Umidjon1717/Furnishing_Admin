@@ -19,12 +19,8 @@ export default function Categories() {
     queryKey: ['categories'],
     queryFn: async () => {
       const res = await api.get('/api/category')
-      // Response: { data: { data: [...], total: N } }
-      const outer = res.data?.data ?? res.data
-      const list = Array.isArray(outer)
-        ? outer
-        : outer?.data ?? outer?.categories ?? outer?.category ?? outer?.items ?? []
-      return list as Category[]
+      // backend key is "categorys" (intentional typo on backend)
+      return (res.data?.data?.categorys ?? []) as Category[]
     },
   })
 

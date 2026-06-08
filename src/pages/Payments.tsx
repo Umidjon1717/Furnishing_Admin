@@ -22,7 +22,7 @@ export default function Payments() {
       const res = await api.get(`/api/payment?page=${page}&limit=${limit}`)
       const d = res.data?.data
       return {
-        payments: (d?.payment ?? d?.payments ?? d?.items ?? []) as Payment[],
+        payments: (d?.payment ?? []) as Payment[], // backend key is "payment" (no s)
         total: d?.total ?? 0,
       }
     },

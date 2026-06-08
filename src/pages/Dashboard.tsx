@@ -59,7 +59,7 @@ export default function Dashboard() {
         queryKey: ['orders-chart'],
         queryFn: async () => {
           const res = await api.get('/api/order?page=1&limit=100')
-          const raw = res.data?.data?.orders ?? res.data?.data?.items ?? []
+          const raw = res.data?.data?.orders ?? []
           return { byDate: groupByDate(raw), byStatus: groupByStatus(raw) }
         },
       },
