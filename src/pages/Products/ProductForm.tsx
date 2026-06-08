@@ -83,6 +83,7 @@ export default function ProductForm() {
         ...(data.length !== '' && { length: Number(data.length) }),
         ...(data.height !== '' && { height: Number(data.height) }),
       }
+      console.log('[product payload]', payload)
       if (isEdit) return api.patch(`/api/products/${id}`, payload)
       return api.post('/api/products', payload)
     },
@@ -91,7 +92,11 @@ export default function ProductForm() {
       toast.success(isEdit ? 'Product updated' : 'Product created')
       navigate('/products')
     },
-    onError: () => toast.error('Failed to save product'),
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: unknown } }
+      console.error('[product save error]', e?.response?.data)
+      toast.error('Failed to save product')
+    },
   })
 
   return (
