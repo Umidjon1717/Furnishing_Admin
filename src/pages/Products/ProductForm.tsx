@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, Upload, X } from 'lucide-react'
+import { ChevronLeft, Upload, X, GripVertical } from 'lucide-react'
 import { api } from '../../api'
 import { Category } from '../../types'
 import { useToast } from '../../components/Toast'
@@ -30,6 +30,8 @@ export default function ProductForm() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
+  const [existingUrls, setExistingUrls] = useState<string[]>([])
+  const dragIndex = useRef<number | null>(null)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>()
 
@@ -65,21 +67,62 @@ export default function ProductForm() {
         length: product.length ?? '',
         height: product.height ?? '',
       })
-      if (product.images?.length) setPreviewUrls(product.images)
+      if (product.images?.length) {
+        setExistingUrls(product.images)
+        setPreviewUrls([])
+        setSelectedFiles([])
+      }
     }
   }, [product, reset])
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
-    setSelectedFiles(files)
-    setPreviewUrls(files.map((f) => URL.createObjectURL(f)))
+    setSelectedFiles((prev) => {
+      const merged = [...prev, ...files]
+      setPreviewUrls(merged.map((f) => URL.createObjectURL(f)))
+      return merged
+    })
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  function removeFile(index: number) {
-    const updated = selectedFiles.filter((_, i) => i !== index)
-    setSelectedFiles(updated)
-    setPreviewUrls(updated.map((f) => URL.createObjectURL(f)))
-    if (fileInputRef.current) fileInputRef.current.value = ''
+  function removeNewFile(index: number) {
+    setSelectedFiles((prev) => {
+      const updated = prev.filter((_, i) => i !== index)
+      setPreviewUrls(updated.map((f) => URL.createObjectURL(f)))
+      return updated
+    })
+  }
+
+  function removeExistingUrl(index: number) {
+    setExistingUrls((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  // Drag-to-reorder new files
+  function onDragStart(index: number) { dragIndex.current = index }
+  function onDrop(dropIndex: number) {
+    if (dragIndex.current === null || dragIndex.current === dropIndex) return
+    setSelectedFiles((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(dragIndex.current!, 1)
+      next.splice(dropIndex, 0, moved)
+      setPreviewUrls(next.map((f) => URL.createObjectURL(f)))
+      dragIndex.current = null
+      return next
+    })
+  }
+
+  // Drag-to-reorder existing URLs
+  const dragExistingIndex = useRef<number | null>(null)
+  function onExistingDragStart(index: number) { dragExistingIndex.current = index }
+  function onExistingDrop(dropIndex: number) {
+    if (dragExistingIndex.current === null || dragExistingIndex.current === dropIndex) return
+    setExistingUrls((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(dragExistingIndex.current!, 1)
+      next.splice(dropIndex, 0, moved)
+      dragExistingIndex.current = null
+      return next
+    })
   }
 
   const mutation = useMutation({
@@ -181,8 +224,8 @@ export default function ProductForm() {
             className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-gray-400 transition-colors"
           >
             <Upload size={20} className="mx-auto text-gray-400 mb-2" />
-            <p className="text-sm text-gray-500">Click to select images</p>
-            <p className="text-xs text-gray-400 mt-1">PNG, JPG, WEBP supported</p>
+            <p className="text-sm text-gray-500">Click to add images</p>
+            <p className="text-xs text-gray-400 mt-1">PNG, JPG, WEBP — drag thumbnails to reorder</p>
           </div>
           <input
             ref={fileInputRef}
@@ -193,26 +236,80 @@ export default function ProductForm() {
             onChange={handleFileChange}
           />
 
-          {previewUrls.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-3">
-              {previewUrls.map((url, i) => (
-                <div key={i} className="relative group">
-                  <img
-                    src={url}
-                    alt={`preview-${i}`}
-                    className="w-20 h-20 object-cover rounded-lg border border-gray-200"
-                  />
-                  {selectedFiles.length > 0 && (
+          {/* Existing images (edit mode) */}
+          {existingUrls.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-gray-400 mb-2">Current images — drag to reorder, first = cover</p>
+              <div className="flex flex-wrap gap-3">
+                {existingUrls.map((url, i) => (
+                  <div
+                    key={url + i}
+                    draggable
+                    onDragStart={() => onExistingDragStart(i)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => onExistingDrop(i)}
+                    className="relative group cursor-grab active:cursor-grabbing"
+                  >
+                    <img
+                      src={url}
+                      alt={`existing-${i}`}
+                      className={`w-20 h-20 object-cover rounded-lg border-2 ${i === 0 ? 'border-gray-900' : 'border-gray-200'}`}
+                    />
+                    {i === 0 && (
+                      <span className="absolute bottom-0 left-0 right-0 text-center text-[9px] bg-gray-900 text-white rounded-b-lg py-0.5">
+                        COVER
+                      </span>
+                    )}
                     <button
                       type="button"
-                      onClick={() => removeFile(i)}
+                      onClick={() => removeExistingUrl(i)}
                       className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       <X size={12} />
                     </button>
-                  )}
-                </div>
-              ))}
+                    <span className="absolute bottom-0 right-0 opacity-0 group-hover:opacity-100 text-gray-400">
+                      <GripVertical size={14} />
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* New file previews */}
+          {previewUrls.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-gray-400 mb-2">New uploads — drag to reorder</p>
+              <div className="flex flex-wrap gap-3">
+                {previewUrls.map((url, i) => (
+                  <div
+                    key={url}
+                    draggable
+                    onDragStart={() => onDragStart(i)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => onDrop(i)}
+                    className="relative group cursor-grab active:cursor-grabbing"
+                  >
+                    <img
+                      src={url}
+                      alt={`new-${i}`}
+                      className={`w-20 h-20 object-cover rounded-lg border-2 ${i === 0 && existingUrls.length === 0 ? 'border-gray-900' : 'border-gray-200'}`}
+                    />
+                    {i === 0 && existingUrls.length === 0 && (
+                      <span className="absolute bottom-0 left-0 right-0 text-center text-[9px] bg-gray-900 text-white rounded-b-lg py-0.5">
+                        COVER
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeNewFile(i)}
+                      className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

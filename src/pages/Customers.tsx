@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Search } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Trash2, Search, Eye, Download } from 'lucide-react'
 import { api } from '../api'
 import { Customer } from '../types'
 import DataTable from '../components/DataTable'
@@ -8,9 +9,11 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import Pagination from '../components/Pagination'
 import Skeleton from '../components/Skeleton'
 import { useToast } from '../components/Toast'
+import { exportCSV } from '../utils/csv'
 
 export default function Customers() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const toast = useToast()
   const [page, setPage] = useState(1)
   const [deleteId, setDeleteId] = useState<number | null>(null)
@@ -64,20 +67,47 @@ export default function Customers() {
     {
       header: 'Actions',
       render: (c: Customer) => (
-        <button
-          onClick={() => setDeleteId(c.id)}
-          className="p-1.5 rounded hover:bg-red-50 text-red-500"
-          title="Delete"
-        >
-          <Trash2 size={15} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate(`/customers/${c.id}`)}
+            className="p-1.5 rounded hover:bg-blue-50 text-blue-500"
+            title="View"
+          >
+            <Eye size={15} />
+          </button>
+          <button
+            onClick={() => setDeleteId(c.id)}
+            className="p-1.5 rounded hover:bg-red-50 text-red-500"
+            title="Delete"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
       ),
     },
   ]
 
+  function handleExport() {
+    exportCSV(
+      'customers',
+      ['ID', 'Full Name', 'Email', 'Phone', 'Active'],
+      customers.map((c) => [c.id, c.full_name ?? '', c.email ?? '', c.phone_number ?? '', c.is_active ? 'Yes' : 'No']),
+    )
+  }
+
   return (
     <div className="space-y-5">
-      <h2 className="text-2xl font-bold text-gray-900">Customers</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-gray-900">Customers</h2>
+        <button
+          onClick={handleExport}
+          disabled={customers.length === 0}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Download size={14} />
+          Export CSV
+        </button>
+      </div>
 
       <div className="flex flex-wrap gap-3">
         <div className="relative">

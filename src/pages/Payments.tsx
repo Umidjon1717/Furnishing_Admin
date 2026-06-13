@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Download } from 'lucide-react'
 import { api } from '../api'
 import { Payment } from '../types'
 import DataTable from '../components/DataTable'
 import StatusBadge from '../components/StatusBadge'
 import Pagination from '../components/Pagination'
 import Skeleton from '../components/Skeleton'
+import { exportCSV } from '../utils/csv'
 
 const STATUS_OPTIONS = ['', 'PENDING', 'COMPLETED', 'FAILED']
 const METHOD_OPTIONS = ['', 'CARD', 'CASH']
@@ -57,9 +59,27 @@ export default function Payments() {
     },
   ]
 
+  function handleExport() {
+    exportCSV(
+      'payments',
+      ['ID', 'Order ID', 'Amount ($)', 'Method', 'Status', 'Date'],
+      payments.map((p) => [p.id, p.orderId, p.amount ?? 0, p.method, p.status, (p.createdAt ?? '').slice(0, 10)]),
+    )
+  }
+
   return (
     <div className="space-y-5">
-      <h2 className="text-2xl font-bold text-gray-900">Payments</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-gray-900">Payments</h2>
+        <button
+          onClick={handleExport}
+          disabled={payments.length === 0}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Download size={14} />
+          Export CSV
+        </button>
+      </div>
 
       <div className="flex gap-3 flex-wrap">
         <select
