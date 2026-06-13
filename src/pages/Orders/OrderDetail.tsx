@@ -15,14 +15,39 @@ export default function OrderDetail() {
   const queryClient = useQueryClient()
   const toast = useToast()
 
+  // Pull the order from the already-fetched list cache first
+  function getFromListCache() {
+    for (let page = 1; page <= 10; page++) {
+      const cached = queryClient.getQueryData<{ orders: ReturnType<typeof normalizeOrder>[] }>(['orders', page])
+      const found = cached?.orders?.find((o) => String(o.id) === id)
+      if (found) return found
+    }
+    return undefined
+  }
+
   const { data: order, isLoading } = useQuery({
     queryKey: ['order', id],
+    initialData: getFromListCache,  // use list cache instantly — no loading flicker
     queryFn: async () => {
       const res = await api.get(`/api/order/${id}`)
       const d = res.data?.data
-      // d could be a single order object or an array (if backend returns by customerId)
-      const raw: Record<string, unknown> = Array.isArray(d) ? d[0] : d
-      return normalizeOrder(raw ?? {})
+
+      // Backend may return: single object, array by customerId, or list wrapper
+      let raw: Record<string, unknown> | null = null
+      if (d && typeof d === 'object') {
+        if ('id' in d) {
+          raw = d as Record<string, unknown>                     // { id, total_price, ... }
+        } else if (Array.isArray(d)) {
+          raw = (d as Record<string, unknown>[]).find((o) => String(o.id) === id) ?? d[0] ?? null
+        } else if ('orders' in d) {
+          const list = (d as { orders: Record<string, unknown>[] }).orders
+          raw = list.find((o) => String(o.id) === id) ?? list[0] ?? null
+        }
+      }
+
+      // If API didn't return a usable object, fall back to list cache
+      if (!raw?.id) return getFromListCache() ?? normalizeOrder({})
+      return normalizeOrder(raw)
     },
   })
 
