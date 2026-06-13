@@ -21,22 +21,45 @@ export interface Category {
   description?: string
 }
 
+// Normalised order — works regardless of camelCase vs snake_case from backend
 export interface Order {
   id: number
   customerId: number
+  customer_id?: number
   totalPrice: number
-  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED'
-  order_date: string
+  total_price?: number
+  status: string
+  order_date?: string
+  createdAt?: string
+  created_at?: string
   deliveryAddress?: string
+  delivery_address?: string
   items?: OrderItem[]
+}
+
+// Helper — pick whichever field the backend actually returns
+export function normalizeOrder(raw: Record<string, unknown>): Order {
+  return {
+    id: (raw.id as number),
+    customerId: (raw.customerId ?? raw.customer_id) as number,
+    customer_id: raw.customer_id as number | undefined,
+    totalPrice: (raw.totalPrice ?? raw.total_price) as number,
+    total_price: raw.total_price as number | undefined,
+    status: (raw.status as string) ?? 'NEW',
+    order_date: (raw.order_date ?? raw.createdAt ?? raw.created_at) as string | undefined,
+    deliveryAddress: (raw.deliveryAddress ?? raw.delivery_address) as string | undefined,
+    items: raw.items as OrderItem[] | undefined,
+  }
 }
 
 export interface OrderItem {
   id: number
-  productId: number
+  productId?: number
+  product_id?: number
   product?: Product
   quantity: number
   price: number
+  unit_price?: number
 }
 
 export interface Customer {

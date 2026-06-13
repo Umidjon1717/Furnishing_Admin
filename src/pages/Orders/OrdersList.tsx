@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Eye, Trash2 } from 'lucide-react'
 import { api } from '../../api'
-import { Order } from '../../types'
+import { Order, normalizeOrder } from '../../types'
 import DataTable from '../../components/DataTable'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -11,7 +11,7 @@ import Pagination from '../../components/Pagination'
 import Skeleton from '../../components/Skeleton'
 import { useToast } from '../../components/Toast'
 
-const STATUS_OPTIONS = ['', 'PENDING', 'PROCESSING', 'COMPLETED', 'CANCELLED']
+const STATUS_OPTIONS = ['', 'NEW', 'PENDING', 'PROCESSING', 'COMPLETED', 'CANCELLED']
 
 export default function OrdersList() {
   const navigate = useNavigate()
@@ -30,7 +30,9 @@ export default function OrdersList() {
     queryFn: async () => {
       const res = await api.get(`/api/order?page=${page}&limit=${limit}`)
       const d = res.data?.data
-      return { orders: (d?.orders ?? d?.items ?? []) as Order[], total: d?.total ?? 0 }
+      const raw = (d?.orders ?? d?.items ?? []) as Record<string, unknown>[]
+      const orders = raw.map(normalizeOrder).reverse() // newest first
+      return { orders, total: d?.total ?? 0 }
     },
   })
 
@@ -46,9 +48,11 @@ export default function OrdersList() {
 
   const orders = (data?.orders ?? []).filter((o) => {
     if (statusFilter && o.status !== statusFilter) return false
-    if (search && !String(o.id).includes(search) && !String(o.customerId).includes(search)) return false
-    if (dateFrom && o.order_date < dateFrom) return false
-    if (dateTo && o.order_date > dateTo + 'T23:59:59') return false
+    const q = search.toLowerCase()
+    if (q && !String(o.id).includes(q) && !String(o.customerId).includes(q)) return false
+    const date = o.order_date?.slice(0, 10) ?? ''
+    if (dateFrom && date < dateFrom) return false
+    if (dateTo && date > dateTo) return false
     return true
   })
 
@@ -57,7 +61,11 @@ export default function OrdersList() {
     { header: 'Customer ID', accessor: 'customerId' as keyof Order },
     {
       header: 'Total',
-      render: (o: Order) => <span className="font-medium">${o.totalPrice?.toLocaleString()}</span>,
+      render: (o: Order) => (
+        <span className="font-medium">
+          {o.totalPrice ? `$${o.totalPrice.toLocaleString()}` : '—'}
+        </span>
+      ),
     },
     {
       header: 'Status',
@@ -65,7 +73,9 @@ export default function OrdersList() {
     },
     {
       header: 'Date',
-      render: (o: Order) => <span className="text-gray-500">{o.order_date?.slice(0, 10)}</span>,
+      render: (o: Order) => (
+        <span className="text-gray-500">{(o.order_date ?? o.createdAt ?? '').slice(0, 10)}</span>
+      ),
     },
     {
       header: 'Actions',
@@ -126,7 +136,9 @@ export default function OrdersList() {
       {isLoading ? (
         <Skeleton rows={8} cols={6} />
       ) : orders.length === 0 ? (
-        <EmptyState message="No orders match your filters." />
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-16 text-center">
+          <p className="text-gray-400 text-sm">No orders match your filters.</p>
+        </div>
       ) : (
         <DataTable columns={columns} data={orders} keyField="id" />
       )}
@@ -145,11 +157,3 @@ export default function OrdersList() {
 }
 
 const inp = 'px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900'
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-16 text-center">
-      <p className="text-gray-400 text-sm">{message}</p>
-    </div>
-  )
-}

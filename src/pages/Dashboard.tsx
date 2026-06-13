@@ -1,19 +1,19 @@
 import { useQueries } from '@tanstack/react-query'
-import { Box, Users, ShoppingCart, CreditCard, TrendingUp, AlertTriangle } from 'lucide-react'
+import { Box, Users, ShoppingCart, CreditCard, TrendingUp, AlertTriangle, DollarSign, TrendingDown, Activity } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell, Legend, LineChart, Line,
 } from 'recharts'
 import { api } from '../api'
 import StatCard from '../components/StatCard'
-import { Order, Product } from '../types'
+import { Order, Payment, Product, normalizeOrder } from '../types'
 
 function useStat(key: string, url: string) {
   return {
     queryKey: [key],
     queryFn: async () => {
       const res = await api.get(url)
-      return res.data?.data?.total ?? res.data?.data?.totalCount ?? 0
+      return res.data?.data?.total ?? 0
     },
   }
 }
@@ -21,7 +21,7 @@ function useStat(key: string, url: string) {
 function groupByDate(orders: Order[]) {
   const map: Record<string, number> = {}
   orders.forEach((o) => {
-    const date = o.order_date?.slice(0, 10) ?? 'Unknown'
+    const date = (o.order_date ?? o.createdAt ?? '').slice(0, 10) || 'Unknown'
     map[date] = (map[date] ?? 0) + 1
   })
   return Object.entries(map)
@@ -36,9 +36,24 @@ function groupByStatus(orders: Order[]) {
   return Object.entries(map).map(([name, value]) => ({ name, value }))
 }
 
+function revenueByDay(payments: Payment[]) {
+  const map: Record<string, number> = {}
+  payments
+    .filter((p) => p.status === 'COMPLETED')
+    .forEach((p) => {
+      const date = p.createdAt?.slice(0, 10) ?? 'Unknown'
+      map[date] = (map[date] ?? 0) + (p.amount ?? 0)
+    })
+  return Object.entries(map)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-14)
+    .map(([date, revenue]) => ({ date, revenue }))
+}
+
 const PIE_COLORS: Record<string, string> = {
+  NEW: '#3b82f6',
   PENDING: '#f59e0b',
-  PROCESSING: '#3b82f6',
+  PROCESSING: '#8b5cf6',
   COMPLETED: '#22c55e',
   CANCELLED: '#ef4444',
 }
@@ -53,14 +68,28 @@ export default function Dashboard() {
     ],
   })
 
-  const [ordersChartResult, lowStockResult] = useQueries({
+  const [ordersResult, paymentsResult, lowStockResult] = useQueries({
     queries: [
       {
         queryKey: ['orders-chart'],
         queryFn: async () => {
           const res = await api.get('/api/order?page=1&limit=100')
-          const raw = res.data?.data?.orders ?? []
-          return { byDate: groupByDate(raw), byStatus: groupByStatus(raw) }
+          const raw = (res.data?.data?.orders ?? []) as Record<string, unknown>[]
+          const orders = raw.map(normalizeOrder)
+          return { byDate: groupByDate(orders), byStatus: groupByStatus(orders) }
+        },
+      },
+      {
+        queryKey: ['payments-analytics'],
+        queryFn: async () => {
+          const res = await api.get('/api/payment?page=1&limit=100')
+          const payments = (res.data?.data?.payment ?? []) as Payment[]
+          const completed = payments.filter((p) => p.status === 'COMPLETED')
+          const failed = payments.filter((p) => p.status === 'FAILED')
+          const totalRevenue = completed.reduce((s, p) => s + (p.amount ?? 0), 0)
+          const totalFailed = failed.reduce((s, p) => s + (p.amount ?? 0), 0)
+          const byDay = revenueByDay(payments)
+          return { totalRevenue, totalFailed, byDay, completed: completed.length, failed: failed.length }
         },
       },
       {
@@ -81,11 +110,14 @@ export default function Dashboard() {
     { title: 'Total Payments', icon: <CreditCard size={22} />, color: 'bg-yellow-500' },
   ]
 
+  const revenue = paymentsResult.data?.totalRevenue ?? 0
+  const failedAmt = paymentsResult.data?.totalFailed ?? 0
+
   return (
     <div className="space-y-8">
       <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
 
-      {/* Stat Cards */}
+      {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {stats.map((s, i) => (
           <StatCard
@@ -98,19 +130,61 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* Profit / Loss cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-green-100 shadow-sm p-5 flex items-center gap-4">
+          <div className="bg-green-500 text-white p-3 rounded-lg">
+            <DollarSign size={22} />
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Total Revenue</p>
+            <p className="text-2xl font-bold text-gray-900">
+              {paymentsResult.isLoading ? '…' : `$${revenue.toLocaleString()}`}
+            </p>
+            <p className="text-xs text-green-600 mt-0.5">{paymentsResult.data?.completed ?? 0} completed payments</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-red-100 shadow-sm p-5 flex items-center gap-4">
+          <div className="bg-red-500 text-white p-3 rounded-lg">
+            <TrendingDown size={22} />
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Failed / Lost</p>
+            <p className="text-2xl font-bold text-gray-900">
+              {paymentsResult.isLoading ? '…' : `$${failedAmt.toLocaleString()}`}
+            </p>
+            <p className="text-xs text-red-500 mt-0.5">{paymentsResult.data?.failed ?? 0} failed payments</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-5 flex items-center gap-4">
+          <div className="bg-blue-500 text-white p-3 rounded-lg">
+            <Activity size={22} />
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Net Position</p>
+            <p className={`text-2xl font-bold ${revenue - failedAmt >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+              {paymentsResult.isLoading ? '…' : `${revenue - failedAmt >= 0 ? '+' : ''}$${(revenue - failedAmt).toLocaleString()}`}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">revenue minus failed</p>
+          </div>
+        </div>
+      </div>
+
       {/* Charts row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Orders per day bar chart */}
+        {/* Orders per day */}
         <div className="xl:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={18} className="text-gray-500" />
             <h3 className="text-base font-semibold text-gray-800">Orders — Last 7 Days</h3>
           </div>
-          {ordersChartResult.isLoading ? (
+          {ordersResult.isLoading ? (
             <div className="h-56 flex items-center justify-center text-gray-400 text-sm">Loading…</div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={ordersChartResult.data?.byDate ?? []} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
+              <BarChart data={ordersResult.data?.byDate ?? []} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
@@ -124,15 +198,15 @@ export default function Dashboard() {
         {/* Order status pie */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h3 className="text-base font-semibold text-gray-800 mb-4">Order Status</h3>
-          {ordersChartResult.isLoading ? (
+          {ordersResult.isLoading ? (
             <div className="h-56 flex items-center justify-center text-gray-400 text-sm">Loading…</div>
-          ) : (ordersChartResult.data?.byStatus ?? []).length === 0 ? (
+          ) : (ordersResult.data?.byStatus ?? []).length === 0 ? (
             <div className="h-56 flex items-center justify-center text-gray-400 text-sm">No orders yet</div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
-                  data={ordersChartResult.data?.byStatus ?? []}
+                  data={ordersResult.data?.byStatus ?? []}
                   cx="50%"
                   cy="45%"
                   innerRadius={50}
@@ -140,7 +214,7 @@ export default function Dashboard() {
                   paddingAngle={3}
                   dataKey="value"
                 >
-                  {(ordersChartResult.data?.byStatus ?? []).map((entry) => (
+                  {(ordersResult.data?.byStatus ?? []).map((entry) => (
                     <Cell key={entry.name} fill={PIE_COLORS[entry.name] ?? '#9ca3af'} />
                   ))}
                 </Pie>
@@ -152,7 +226,23 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Low stock alert */}
+      {/* Revenue over time */}
+      {(paymentsResult.data?.byDay ?? []).length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h3 className="text-base font-semibold text-gray-800 mb-4">Revenue — Last 14 Days</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={paymentsResult.data?.byDay ?? []} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: number) => [`$${v.toLocaleString()}`, 'Revenue']} />
+              <Line type="monotone" dataKey="revenue" stroke="#22c55e" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Low stock */}
       {(lowStockResult.data ?? []).length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-orange-100 p-6">
           <div className="flex items-center gap-2 mb-4">
