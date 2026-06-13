@@ -19,8 +19,19 @@ export default function OrderDetail() {
     queryKey: ['order', id],
     queryFn: async () => {
       const res = await api.get(`/api/order/${id}`)
-      const raw = res.data?.data ?? res.data
-      console.log('[order raw]', raw)
+      // Log every level so we can see where the data actually lives
+      console.log('[order] res.data          =', res.data)
+      console.log('[order] res.data.data     =', res.data?.data)
+      console.log('[order] res.data.data.id  =', res.data?.data?.id)
+
+      // Try every possible nesting the backend might use
+      const d = res.data?.data
+      const raw: Record<string, unknown> =
+        typeof d === 'object' && d !== null && 'id' in d
+          ? d                          // { data: { id, ... } }
+          : d?.order ?? d?.orders?.[0] // { data: { order: {...} } } or orders array
+            ?? res.data                // fallback to root
+      console.log('[order] resolved raw =', raw)
       return normalizeOrder(raw as Record<string, unknown>)
     },
   })
