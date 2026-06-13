@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, Package, User, MapPin, CreditCard, Calendar } from 'lucide-react'
 import { api } from '../../api'
-import { normalizeOrder, OrderItem } from '../../types'
+import { OrderDetail as OD, normalizeOrder } from '../../types'
 import StatusBadge from '../../components/StatusBadge'
 import Skeleton from '../../components/Skeleton'
 import { useToast } from '../../components/Toast'
@@ -19,20 +19,10 @@ export default function OrderDetail() {
     queryKey: ['order', id],
     queryFn: async () => {
       const res = await api.get(`/api/order/${id}`)
-      // Log every level so we can see where the data actually lives
-      console.log('[order] res.data          =', res.data)
-      console.log('[order] res.data.data     =', res.data?.data)
-      console.log('[order] res.data.data.id  =', res.data?.data?.id)
-
-      // Try every possible nesting the backend might use
       const d = res.data?.data
-      const raw: Record<string, unknown> =
-        typeof d === 'object' && d !== null && 'id' in d
-          ? d                          // { data: { id, ... } }
-          : d?.order ?? d?.orders?.[0] // { data: { order: {...} } } or orders array
-            ?? res.data                // fallback to root
-      console.log('[order] resolved raw =', raw)
-      return normalizeOrder(raw as Record<string, unknown>)
+      // d could be a single order object or an array (if backend returns by customerId)
+      const raw: Record<string, unknown> = Array.isArray(d) ? d[0] : d
+      return normalizeOrder(raw ?? {})
     },
   })
 
@@ -41,30 +31,23 @@ export default function OrderDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', id] })
       queryClient.invalidateQueries({ queryKey: ['orders'] })
-      toast.success('Order status updated')
+      toast.success('Status updated')
     },
     onError: () => toast.error('Failed to update status'),
   })
 
-  if (isLoading) return (
-    <div className="max-w-3xl space-y-4">
-      <Skeleton rows={5} cols={2} />
-    </div>
-  )
-  if (!order) return <p className="text-gray-500">Order not found.</p>
+  if (isLoading) return <div className="max-w-3xl"><Skeleton rows={5} cols={2} /></div>
+  if (!order?.id) return <p className="text-gray-500 p-4">Order not found.</p>
 
-  const date = (order.order_date ?? order.createdAt ?? order.created_at ?? '').slice(0, 10)
-  const total = order.totalPrice ?? order.total_price ?? 0
-  const address = order.deliveryAddress ?? order.delivery_address
-
-  const items = (order.items ?? []) as (OrderItem & Record<string, unknown>)[]
-  const itemsTotal = items.reduce((sum, i) => {
-    const price = (i.price ?? i.unit_price ?? 0) as number
-    return sum + price * i.quantity
-  }, 0)
+  const items = order.order_details ?? []
+  const addr  = order.order_address
+  const itemsTotal = items.reduce((s, i) => s + (i.product?.price ?? 0) * i.quantity, 0)
+  const date = order.order_date?.slice(0, 10) ?? '—'
+  const total = order.total_price ?? 0
 
   return (
     <div className="max-w-3xl space-y-6">
+
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/orders')} className="p-1.5 rounded hover:bg-gray-100">
@@ -72,34 +55,40 @@ export default function OrderDetail() {
         </button>
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Order #{order.id}</h2>
-          <p className="text-sm text-gray-400 mt-0.5">{date}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{date}</p>
         </div>
-        <div className="ml-auto">
-          <StatusBadge status={order.status} />
-        </div>
+        <div className="ml-auto"><StatusBadge status={order.status} /></div>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary mini-cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <MiniCard icon={<User size={16} />} label="Customer ID" value={String(order.customerId ?? '—')} />
-        <MiniCard icon={<CreditCard size={16} />} label="Total" value={total ? `$${total.toLocaleString()}` : '—'} />
-        <MiniCard icon={<Calendar size={16} />} label="Date" value={date || '—'} />
-        <MiniCard icon={<Package size={16} />} label="Items" value={String(items.length)} />
+        <MiniCard icon={<User size={15} />}     label="Customer ID" value={String(order.customerId ?? '—')} />
+        <MiniCard icon={<CreditCard size={15} />} label="Total"       value={total ? `$${total.toLocaleString()}` : '—'} />
+        <MiniCard icon={<Calendar size={15} />}  label="Date"         value={date} />
+        <MiniCard icon={<Package size={15} />}   label="Items"        value={String(items.length)} />
       </div>
 
-      {/* Order info */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-800 mb-2">Order Details</h3>
-        <Row label="Order ID" value={String(order.id)} />
+      {/* Order info + address */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-3">
+        <h3 className="text-sm font-semibold text-gray-800 mb-1">Order Details</h3>
+        <Row label="Order ID"    value={String(order.id)} />
         <Row label="Customer ID" value={String(order.customerId ?? '—')} />
-        <Row label="Date" value={date || '—'} />
+        <Row label="Date"        value={date} />
         <Row label="Total Price" value={total ? `$${total.toLocaleString()}` : '—'} />
-        {address && (
-          <div className="flex gap-2 pt-2 border-t border-gray-50">
-            <MapPin size={15} className="text-gray-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-xs text-gray-400">Delivery Address</p>
-              <p className="text-sm text-gray-700 mt-0.5">{address}</p>
+        <Row label="Status"      value={order.status} />
+
+        {addr && (
+          <div className="pt-3 border-t border-gray-100 space-y-2">
+            <div className="flex items-center gap-2 text-gray-500">
+              <MapPin size={15} />
+              <span className="text-xs font-semibold uppercase tracking-wide">Delivery Address</span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm pl-5">
+              {addr.region       && <Row label="Region"     value={addr.region} />}
+              {addr.district     && <Row label="District"   value={addr.district} />}
+              {addr.street       && <Row label="Street"     value={addr.street} />}
+              {addr.zip_code     && <Row label="Zip Code"   value={addr.zip_code} />}
+              {addr.additional_info && <Row label="Note"    value={addr.additional_info} />}
             </div>
           </div>
         )}
@@ -114,7 +103,7 @@ export default function OrderDetail() {
               key={s}
               onClick={() => statusMutation.mutate(s)}
               disabled={statusMutation.isPending || order.status === s}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                 order.status === s
                   ? 'bg-gray-900 text-white border-gray-900'
                   : 'border-gray-300 text-gray-600 hover:bg-gray-50'
@@ -131,40 +120,35 @@ export default function OrderDetail() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <h3 className="font-semibold text-gray-800 text-sm">Items ({items.length})</h3>
-            {itemsTotal > 0 && (
-              <span className="text-sm font-semibold text-gray-700">
-                Subtotal: ${itemsTotal.toLocaleString()}
-              </span>
-            )}
+            <span className="text-sm font-semibold text-gray-700">
+              Subtotal: ${itemsTotal.toLocaleString()}
+            </span>
           </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Product</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">SKU</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Qty</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit Price</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Subtotal</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((item, idx) => {
-                const unitPrice = (item.price ?? item.unit_price ?? 0) as number
-                const productName = item.product?.name
-                  ?? (item.product_name as string | undefined)
-                  ?? `Product #${item.productId ?? item.product_id ?? idx + 1}`
-                const sku = item.product?.sku ?? (item.sku as string | undefined) ?? '—'
+              {items.map((item: OD, idx: number) => {
+                const unitPrice = item.product?.price ?? 0
+                const name = item.product?.name ?? `Product #${idx + 1}`
+                const img  = item.product?.images?.[0]
                 return (
                   <tr key={item.id ?? idx} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
-                        {item.product?.images?.[0] && (
-                          <img src={item.product.images[0]} className="w-8 h-8 object-cover rounded" alt="" />
-                        )}
-                        <span className="font-medium text-gray-700">{productName}</span>
+                        {img
+                          ? <img src={img} className="w-9 h-9 object-cover rounded-lg border" alt="" />
+                          : <div className="w-9 h-9 bg-gray-100 rounded-lg" />
+                        }
+                        <span className="font-medium text-gray-700">{name}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-gray-500">{sku}</td>
                     <td className="px-5 py-3 text-gray-600">{item.quantity}</td>
                     <td className="px-5 py-3 text-gray-600">${unitPrice.toLocaleString()}</td>
                     <td className="px-5 py-3 font-semibold text-gray-800">
@@ -174,20 +158,18 @@ export default function OrderDetail() {
                 )
               })}
             </tbody>
-            {itemsTotal > 0 && (
-              <tfoot>
-                <tr className="bg-gray-50 border-t border-gray-200">
-                  <td colSpan={4} className="px-5 py-3 text-right text-sm font-semibold text-gray-700">Total</td>
-                  <td className="px-5 py-3 text-sm font-bold text-gray-900">${itemsTotal.toLocaleString()}</td>
-                </tr>
-              </tfoot>
-            )}
+            <tfoot>
+              <tr className="bg-gray-50 border-t border-gray-200">
+                <td colSpan={3} className="px-5 py-3 text-right text-sm font-semibold text-gray-700">Total</td>
+                <td className="px-5 py-3 text-sm font-bold text-gray-900">${itemsTotal.toLocaleString()}</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-10 text-center">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-12 text-center">
           <Package size={28} className="mx-auto text-gray-300 mb-2" />
-          <p className="text-sm text-gray-400">No item details available for this order.</p>
+          <p className="text-sm text-gray-400">No item details for this order.</p>
         </div>
       )}
     </div>
@@ -196,7 +178,7 @@ export default function OrderDetail() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between text-sm py-1 border-b border-gray-50 last:border-0">
+    <div className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
       <span className="text-gray-400">{label}</span>
       <span className="text-gray-800 font-medium">{value}</span>
     </div>
@@ -206,11 +188,11 @@ function Row({ label, value }: { label: string; value: string }) {
 function MiniCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-      <div className="flex items-center gap-2 text-gray-400 mb-1">
+      <div className="flex items-center gap-1.5 text-gray-400 mb-1">
         {icon}
         <span className="text-xs">{label}</span>
       </div>
-      <p className="text-base font-bold text-gray-900">{value}</p>
+      <p className="text-base font-bold text-gray-900 truncate">{value}</p>
     </div>
   )
 }

@@ -21,7 +21,7 @@ function useStat(key: string, url: string) {
 function groupByDate(orders: Order[]) {
   const map: Record<string, number> = {}
   orders.forEach((o) => {
-    const date = (o.order_date ?? o.createdAt ?? '').slice(0, 10) || 'Unknown'
+    const date = (o.order_date ?? '').slice(0, 10) || 'Unknown'
     map[date] = (map[date] ?? 0) + 1
   })
   return Object.entries(map)

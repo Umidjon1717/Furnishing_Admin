@@ -63,7 +63,7 @@ export default function OrdersList() {
       header: 'Total',
       render: (o: Order) => (
         <span className="font-medium">
-          {o.totalPrice ? `$${o.totalPrice.toLocaleString()}` : '—'}
+          {o.total_price ? `$${o.total_price.toLocaleString()}` : '—'}
         </span>
       ),
     },
@@ -74,7 +74,7 @@ export default function OrdersList() {
     {
       header: 'Date',
       render: (o: Order) => (
-        <span className="text-gray-500">{(o.order_date ?? o.createdAt ?? '').slice(0, 10)}</span>
+        <span className="text-gray-500">{(o.order_date ?? '').slice(0, 10)}</span>
       ),
     },
     {

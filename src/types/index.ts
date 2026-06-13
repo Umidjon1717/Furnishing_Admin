@@ -21,46 +21,55 @@ export interface Category {
   description?: string
 }
 
-// Normalised order — works regardless of camelCase vs snake_case from backend
-export interface Order {
-  id: number
-  customerId: number
-  customer_id?: number
-  totalPrice: number
-  total_price?: number
-  status: string
-  order_date?: string
-  createdAt?: string
-  created_at?: string
-  deliveryAddress?: string
-  delivery_address?: string
-  items?: OrderItem[]
+export interface OrderAddress {
+  id?: number
+  region?: string
+  district?: string
+  street?: string
+  zip_code?: string
+  additional_info?: string
 }
 
-// Helper — pick whichever field the backend actually returns
-export function normalizeOrder(raw: Record<string, unknown>): Order {
-  return {
-    id: (raw.id as number),
-    customerId: (raw.customerId ?? raw.customer_id) as number,
-    customer_id: raw.customer_id as number | undefined,
-    totalPrice: (raw.totalPrice ?? raw.total_price) as number,
-    total_price: raw.total_price as number | undefined,
-    status: (raw.status as string) ?? 'NEW',
-    order_date: (raw.order_date ?? raw.createdAt ?? raw.created_at) as string | undefined,
-    deliveryAddress: (raw.deliveryAddress ?? raw.delivery_address) as string | undefined,
-    items: raw.items as OrderItem[] | undefined,
+export interface OrderDetail {
+  id: number
+  quantity: number
+  product?: {
+    id: number
+    name: string
+    description?: string
+    price: number
+    images?: string[]
+    stock?: number
+    average_rating?: number
   }
 }
 
-export interface OrderItem {
+// Normalised shape used throughout the frontend
+export interface Order {
   id: number
-  productId?: number
-  product_id?: number
-  product?: Product
-  quantity: number
-  price: number
-  unit_price?: number
+  customerId: number
+  total_price: number
+  status: string
+  order_date?: string
+  order_address?: OrderAddress
+  order_details?: OrderDetail[]
 }
+
+// Accepts the raw backend object (any field naming) and returns a clean Order
+export function normalizeOrder(raw: Record<string, unknown>): Order {
+  return {
+    id: raw.id as number,
+    customerId: (raw.customerId ?? raw.customer_id) as number,
+    total_price: (raw.total_price ?? raw.totalPrice) as number,
+    status: (raw.status as string) ?? 'NEW',
+    order_date: (raw.order_date ?? raw.createdAt ?? raw.created_at) as string | undefined,
+    order_address: raw.order_address as OrderAddress | undefined,
+    order_details: raw.order_details as OrderDetail[] | undefined,
+  }
+}
+
+// Legacy alias kept so OrderItem references elsewhere don't break
+export type OrderItem = OrderDetail
 
 export interface Customer {
   id: number
@@ -85,11 +94,4 @@ export interface Discount {
   discount_percent: number
   start_date: string
   end_date: string
-}
-
-export interface PaginatedResponse<T> {
-  data: T
-  total: number
-  page: number
-  limit: number
 }
