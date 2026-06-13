@@ -22,6 +22,7 @@ export default function Login() {
       const token = res.data?.data?.access_token
       if (!token) throw new Error('No token')
       localStorage.setItem('admin_token', token)
+      localStorage.setItem('admin_email', data.email)
       navigate('/')
     } catch {
       setError('Invalid email or password')

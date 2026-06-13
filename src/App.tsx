@@ -13,6 +13,7 @@ import Customers from './pages/Customers'
 import CustomerDetail from './pages/Customers/CustomerDetail'
 import Payments from './pages/Payments'
 import Discounts from './pages/Discounts'
+import Profile from './pages/Profile'
 
 export default function App() {
   return (
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="/customers/:id" element={<CustomerDetail />} />
           <Route path="/payments" element={<Payments />} />
           <Route path="/discounts" element={<Discounts />} />
+          <Route path="/profile" element={<Profile />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
